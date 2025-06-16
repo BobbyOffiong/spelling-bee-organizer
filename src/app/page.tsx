@@ -8,7 +8,7 @@ export default function Home() {
 
   useEffect(() => {
     router.push('/auth/signup'); // 👈 change this to your actual start page
-  }, []);
+  }, [router]);
 
   return null;
 }

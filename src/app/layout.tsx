@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Poppins } from "next/font/google";
 import "./globals.css";
-//import ServiceWorkerRegister from "@/components/ServiceWorkerRegister"; // import this line
+import { Toaster } from 'react-hot-toast'; // import this line
 
 const poppins = Poppins({ subsets: ['latin'], weight: ['400', '600', '700'], variable: '--font-poppins' });
 
@@ -36,8 +36,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${poppins.variable} antialiased`}
       >
 
-          {/*<ServiceWorkerRegister />  register service worker */}
         {children}
+
+        <Toaster position="top-center" />
       </body>
     </html>
   );
