@@ -1,0 +1,19 @@
+// tsconfig.script.json
+{
+  "extends": "./tsconfig.json", // This makes it inherit settings from your main tsconfig.json
+  "compilerOptions": {
+    "module": "CommonJS",      // Force CommonJS for this script
+    "target": "ES2020",        // Or your desired target (e.g., "ESNext")
+    "baseUrl": ".",            // Important for path aliases
+    "paths": {
+      "@/lib/*": ["lib/*"]     // If your migrate-users.ts uses '@/lib/mongodb'
+    }
+  },
+  "include": [
+    "migrate-users.ts",        // Explicitly include your migration script
+    "lib/**/*.ts"              // Include your lib folder for dependencies like mongodb.ts
+  ],
+  "exclude": [
+    "node_modules"             // Standard exclusion
+  ]
+}
