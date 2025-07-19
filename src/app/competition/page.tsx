@@ -1,4 +1,4 @@
-// pages/competition.tsx
+// competition/page.tsx
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import BeeFlyer from '@/components/BeeFlyer';
@@ -7,7 +7,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import CompetitorRegistrationForm from '@/components/CompetitorRegistrationForm';
 import CompetitorRoundDisplay from '@/components/CompetitorRoundDisplay';
 import Timer from '@/components/Timer'; // Import the new Timer component
-//import Confetti from 'react-confetti'; // Import the confetti component
+import Confetti from 'react-confetti'; // Import the confetti component
 
 // --- Firebase Imports ---
 import { db } from '@/lib/firebaseConfig';
