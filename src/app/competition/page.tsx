@@ -1,4 +1,4 @@
-// competition/page.tsx
+// pages/competition.tsx
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import BeeFlyer from '@/components/BeeFlyer';
@@ -63,6 +63,8 @@ export default function CompetitionPage() {
   const correctSoundRef = useRef<HTMLAudioElement | null>(null);
   const wrongSoundRef = useRef<HTMLAudioElement | null>(null);
   const competitorsScrollRef = useRef<HTMLDivElement>(null);
+  // 1. New useRef for the winner sound:
+const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
 
   // Filter active competitors for the current round display (those not eliminated)
   const activeCompetitorsInRound = competitors.filter(comp => !comp.isEliminated);
@@ -202,6 +204,9 @@ export default function CompetitionPage() {
       setFinalWinner(remainingCompetitors[0]);
       setShowRoundSelection(false);
       setShowCompetitionUI(false);
+      if (winnerSoundRef.current) { // Added this block
+      winnerSoundRef.current.play();
+    }
       toast.success(`${remainingCompetitors[0].name} wins the competition!`);
     } else {
       // If more than one, advance to the next round's spelling phase
@@ -340,6 +345,9 @@ export default function CompetitionPage() {
         setFinalWinner(nonEliminated[0]);
         setShowCompetitionUI(false);
         setShowRoundSelection(false);
+        if (winnerSoundRef.current) { // Added this block
+        winnerSoundRef.current.play();
+      }
       } else {
         toast('All predefined rounds completed! Please confirm final winners to declare a champion.');
         setShowCompetitionUI(false);
@@ -360,6 +368,7 @@ export default function CompetitionPage() {
     if (typeof window !== 'undefined') {
       correctSoundRef.current = new Audio('/sounds/correct.mp3');
       wrongSoundRef.current = new Audio('/sounds/wrong.mp3');
+      winnerSoundRef.current = new Audio('/sounds/winner.mp3');
 
       // Add event listener for window resize
       window.addEventListener('resize', detectSize);
@@ -657,7 +666,7 @@ export default function CompetitionPage() {
 
             {/* Result Modal */}
             {showResultModal && typedWord && correctWord && (
-              <div className="fixed inset-0 bg-black bg-opacity-10 flex items-center justify-center p-4 z-50"> {/* Point 2: Changed opacity */}
+              <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50"> {/* Point 2: Changed opacity */}
                 <div className="bg-white p-6 rounded-lg shadow-2xl text-center w-full max-w-md border border-gray-300 relative">
                   <button
                     onClick={closeResultModal}
@@ -721,6 +730,11 @@ export default function CompetitionPage() {
                 setSelectedSpellerId(null); // Reset selected speller
                 setShowResultModal(false); // Hide modal
                 setShowSpellingInputOnly(false); // Hide spelling input
+
+                if (winnerSoundRef.current) {
+  winnerSoundRef.current.pause(); // Pause the audio
+  winnerSoundRef.current.currentTime = 0; // Rewind to the beginning
+}
               }}
               className="mt-8 bg-purple-600 text-white px-6 py-3 rounded-md shadow-lg font-bold text-lg hover:bg-purple-700 
               transition-transform transform hover:scale-105 active:scale-95 hover:cursor-pointer"
