@@ -3,9 +3,9 @@
   "short_name": "Spelling Bee",
   "description": "Organize and run your spelling bee rounds with ease.",
   "start_url": "/auth/signup",
-  "display": "fullscreen",
+  "display": "standalone",
   "background_color": "#f0fdf4",
-  "theme_color": "#047857",
+  "theme_color": "#000000",
   "icons": [
     {
       "src": "/images/competitionPage/bee192.png",
