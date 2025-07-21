@@ -1,9 +1,20 @@
-// components/CompetitorRegistrationForm.tsx
+// src/components/CompetitorRegistrationForm.tsx
 import React, { useState } from 'react';
 import { PlusCircle, Trash2, Play } from 'lucide-react'; // For icons
+import toast from 'react-hot-toast'; // Import toast for consistent error messages
+
+// Define Competitor interface (should match the one in CompetitionPage.tsx)
+interface Competitor {
+  id: string;
+  name: string;
+  isEliminated: boolean;
+  isCurrentTurn: boolean; // <--- This was the missing property
+  score: number;
+}
 
 interface CompetitorRegistrationFormProps {
-  onRegisterCompetitors: (competitors: { id: string; name: string; isEliminated: boolean; score: number }[]) => void;
+  // Updated the type of competitors in the prop to match the full Competitor interface
+  onRegisterCompetitors: (competitors: Competitor[]) => void;
   onStartCompetition: () => void;
 }
 
@@ -12,18 +23,18 @@ const CompetitorRegistrationForm: React.FC<CompetitorRegistrationFormProps> = ({
   onStartCompetition,
 }) => {
   const [competitorName, setCompetitorName] = useState<string>('');
-  const [competitors, setCompetitors] = useState<
-    { id: string; name: string; isEliminated: boolean; score: number }[]
-  >([]);
+  // Updated the type of the 'competitors' state to match the full Competitor interface
+  const [competitors, setCompetitors] = useState<Competitor[]>([]);
 
   // Handles adding a new competitor to the list
   const handleAddCompetitor = () => {
     if (competitorName.trim() !== '') {
       // Generate a simple unique ID for each competitor
-      const newCompetitor = {
+      const newCompetitor: Competitor = { // <--- Explicitly type newCompetitor
         id: Date.now().toString() + Math.random().toString(36).substring(2, 9), // Simple unique ID
         name: competitorName.trim(),
         isEliminated: false,
+        isCurrentTurn: false, // <--- Initialize isCurrentTurn to false
         score: 0,
       };
       setCompetitors((prev) => [...prev, newCompetitor]);
@@ -39,7 +50,7 @@ const CompetitorRegistrationForm: React.FC<CompetitorRegistrationFormProps> = ({
   // Handles starting the competition after names are entered
   const handleStartCompetition = () => {
     if (competitors.length < 2) {
-      alert('Please add at least two competitors to start the competition.'); // Using alert for now, will replace with toast later
+      toast.error('Please add at least two competitors to start the competition.'); // Changed from alert to toast
       return;
     }
     onRegisterCompetitors(competitors); // Pass the registered competitors up to the parent
