@@ -1,6 +1,7 @@
-// components/CompetitorRoundDisplay.tsx
-import React, { useState, useEffect } from 'react';
+// src/components/CompetitorRoundDisplay.tsx
+import React, { useState, useEffect, useRef } from 'react'; // Import useRef
 import { CheckCircle, XCircle } from 'lucide-react'; // For icons
+import toast from 'react-hot-toast'; // Import toast
 
 // Define Competitor interface (should match the one in CompetitionPage.tsx)
 interface Competitor {
@@ -15,26 +16,43 @@ interface CompetitorRoundDisplayProps {
   currentRound: number;
   activeCompetitors: Competitor[];
   onConfirmWinners: (winners: Competitor[]) => void;
-  onAdvanceToSpelling: () => void; // New prop to signal transition to spelling phase
-  isSpellingPhase: boolean; // New prop to indicate if we are in spelling phase
+  isSpellingPhase: boolean;
 }
 
 const CompetitorRoundDisplay: React.FC<CompetitorRoundDisplayProps> = ({
   currentRound,
   activeCompetitors,
   onConfirmWinners,
-  onAdvanceToSpelling,
   isSpellingPhase,
 }) => {
   // State to track which competitors are selected to advance to the next round
   const [selectedToAdvance, setSelectedToAdvance] = useState<string[]>([]);
   const [showConfirmButton, setShowConfirmButton] = useState(false); // Controls visibility of Confirm Winners button
 
-  // Reset selectedToAdvance when activeCompetitors or currentRound changes
+  // Use a ref to track the previous currentRound to differentiate between
+  // a new round starting and a re-render within the same round.
+  const prevRoundRef = useRef<number>(currentRound);
+
+  // Effect to manage selectedToAdvance based on round changes and active competitors
   useEffect(() => {
-    setSelectedToAdvance(activeCompetitors.map(comp => comp.id)); // By default, all active competitors are selected
-    setShowConfirmButton(true); // Show confirm button when a new round starts
-  }, [activeCompetitors, currentRound]);
+    // If the currentRound prop has changed, it signifies a new round.
+    // In this case, we reset the selection to be empty by default.
+    if (prevRoundRef.current !== currentRound) {
+      setSelectedToAdvance([]); // Reset selection for a new round
+      toast('New round started. Please select winners.', { icon: '🏆' });
+    } else {
+      // If it's the same round, but activeCompetitors might have changed (e.g., due to eliminations),
+      // we filter the current selection to ensure only still-active competitors remain selected.
+      const currentActiveIds = new Set(activeCompetitors.map(c => c.id));
+      setSelectedToAdvance(prevSelected => prevSelected.filter(id => currentActiveIds.has(id)));
+    }
+
+    // Update the ref to the current round number for the next render cycle.
+    prevRoundRef.current = currentRound;
+
+    // Always show the confirm button when this component is active.
+    setShowConfirmButton(true);
+  }, [activeCompetitors, currentRound]); // Dependencies: re-run when activeCompetitors or currentRound changes
 
   // Handle toggling selection of a competitor
   const handleToggleSelection = (competitorId: string) => {
@@ -48,7 +66,7 @@ const CompetitorRoundDisplay: React.FC<CompetitorRoundDisplayProps> = ({
   // Handle confirming the winners for the current round
   const handleConfirm = () => {
     if (selectedToAdvance.length === 0) {
-      alert('Please select at least one competitor to advance.'); // Will replace with toast later
+      toast.error('Please select at least one competitor to advance.');
       return;
     }
     const winners = activeCompetitors.filter(comp => selectedToAdvance.includes(comp.id));
@@ -69,8 +87,8 @@ const CompetitorRoundDisplay: React.FC<CompetitorRoundDisplayProps> = ({
                 key={comp.id}
                 className={`flex items-center justify-between p-4 rounded-lg shadow-sm cursor-pointer transition-all duration-200
                   ${selectedToAdvance.includes(comp.id)
-                    ? 'bg-green-100 border-2 border-green-500'
-                    : 'bg-gray-50 border border-gray-200 hover:bg-gray-100'
+                    ? 'bg-green-100 border-2 border-green-500' // Selected style
+                    : 'bg-gray-50 border border-gray-200 hover:bg-gray-100' // Unselected style
                   }`}
                 onClick={() => handleToggleSelection(comp.id)}
               >
