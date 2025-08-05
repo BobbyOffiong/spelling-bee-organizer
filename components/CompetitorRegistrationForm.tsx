@@ -113,7 +113,7 @@ const CompetitorRegistrationForm: React.FC<CompetitorRegistrationFormProps> = ({
       <button
         onClick={handleStartCompetition}
         disabled={competitors.length < 2}
-        className={`w-full py-3 rounded-md shadow-lg font-bold text-lg flex items-center justify-center gap-2 transition-all duration-300
+        className={`w-full py-3 rounded-md shadow-lg font-bold text-lg flex items-center justify-center gap-2 transition-all duration-300 cursor-pointer
           ${competitors.length < 2
             ? 'bg-gray-400 text-gray-700 cursor-not-allowed'
             : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-98'
