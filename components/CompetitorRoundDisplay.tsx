@@ -104,7 +104,7 @@ const CompetitorRoundDisplay: React.FC<CompetitorRoundDisplayProps> = ({
           {showConfirmButton && (
             <button
               onClick={handleConfirm}
-              className="w-full py-3 rounded-md shadow-lg font-bold text-lg flex items-center justify-center gap-2 transition-all duration-300 bg-blue-600 text-white hover:bg-blue-700 active:scale-98"
+              className="w-full py-3 rounded-md shadow-lg font-bold text-lg flex items-center justify-center gap-2 transition-all duration-300 bg-blue-600 text-white hover:bg-blue-700 active:scale-98 cursor-pointer"
             >
               Confirm Winners for Round {currentRound}
             </button>
