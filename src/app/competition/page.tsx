@@ -6,25 +6,24 @@ import Footer from '@/components/Footer';
 import toast, { Toaster } from 'react-hot-toast';
 import CompetitorRegistrationForm from '@/components/CompetitorRegistrationForm';
 import CompetitorRoundDisplay from '@/components/CompetitorRoundDisplay';
-import Timer from '@/components/Timer'; // Import the new Timer component
-import Confetti from 'react-confetti'; // Import the confetti component
+import Timer from '@/components/Timer';
+import Confetti from 'react-confetti';
 
 // --- Firebase Imports ---
 import { db } from '@/lib/firebaseConfig';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
-// Define Competitor interface for better type safety
 interface Competitor {
   id: string;
   name: string;
-  isEliminated: boolean; // True if out of the competition
-  isCurrentTurn: boolean; // To highlight who's currently spelling
-  score: number; // Optional, if you want to track scores
+  isEliminated: boolean;
+  isCurrentTurn: boolean;
+  score: number;
 }
 
 export default function CompetitionPage() {
   const [passkey, setPasskey] = useState('');
-  const [loadedData, setLoadedData] = useState<any>(null); // This will hold competitionName and rounds
+  const [loadedData, setLoadedData] = useState<any>(null);
   const [currentRound, setCurrentRound] = useState(1);
   const [inputNumber, setInputNumber] = useState('');
   const [inputWord, setInputWord] = useState('');
@@ -37,41 +36,38 @@ export default function CompetitionPage() {
 
   // --- COMPETITOR MANAGEMENT & UI FLOW ---
   const [competitors, setCompetitors] = useState<Competitor[]>([]);
+  const [roundCompetitorStates, setRoundCompetitorStates] = useState<Map<number, Competitor[]>>(new Map());
   const [showPasskeyInput, setShowPasskeyInput] = useState(true);
   const [showCompetitorRegistration, setShowCompetitorRegistration] = useState(false);
-  const [showRoundSelection, setShowRoundSelection] = useState(false); // Phase for selecting winners to advance
-  const [showCompetitionUI, setShowCompetitionUI] = useState(false); // Main spelling UI for a round
+  const [showRoundSelection, setShowRoundSelection] = useState(false);
+  const [showCompetitionUI, setShowCompetitionUI] = useState(false);
   const [finalWinner, setFinalWinner] = useState<Competitor | null>(null);
 
+  // --- NEW STATE FOR REVIEWING PREVIOUS ROUND ---
+  const [isReviewingPastRound, setIsReviewingPastRound] = useState(false); //
+
   // --- TIMER STATE ---
-  const [timerDuration, setTimerDuration] = useState(30); // Default 30 seconds
+  const [timerDuration, setTimerDuration] = useState(30);
   const [timerIsRunning, setTimerIsRunning] = useState(false);
-  const [selectedSpellerId, setSelectedSpellerId] = useState<string | null>(null); // ID of the competitor whose turn it is
+  const [selectedSpellerId, setSelectedSpellerId] = useState<string | null>(null);
 
   // --- MODAL STATE ---
   const [showResultModal, setShowResultModal] = useState(false);
-  // --- NEW STATE FOR HIDING SPELLING INPUT ---
-  const [showSpellingInputOnly, setShowSpellingInputOnly] = useState(false); // Only hides spelling input, not word number
+  const [showSpellingInputOnly, setShowSpellingInputOnly] = useState(false);
 
-  // State to hold window dimensions for full-screen confetti
   const [windowDimension, setWindowDimension] = useState({
     width: typeof window !== 'undefined' ? window.innerWidth : 0,
     height: typeof window !== 'undefined' ? window.innerHeight : 0,
   });
 
-  // Use useRef to hold the Audio objects. They will be initialized once on the client.
   const correctSoundRef = useRef<HTMLAudioElement | null>(null);
   const wrongSoundRef = useRef<HTMLAudioElement | null>(null);
+  const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
   const competitorsScrollRef = useRef<HTMLDivElement>(null);
-  // 1. New useRef for the winner sound:
-const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
 
-  // Filter active competitors for the current round display (those not eliminated)
   const activeCompetitorsInRound = competitors.filter(comp => !comp.isEliminated);
-  // Find the current competitor based on selectedSpellerId
   const currentCompetitor = activeCompetitorsInRound.find(comp => comp.id === selectedSpellerId) || null;
 
-  // Function to start a new competitor's turn and timer
   const startSpellingTurn = useCallback(() => {
     if (!selectedSpellerId) {
       toast.error("Please select a competitor first to start their turn.");
@@ -81,21 +77,17 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
     setFeedback('');
     setCorrectWord('');
     setTypedWord('');
-    setInputWord(''); // Clear spelling input for new turn
-    setShowSpellingInputOnly(true); // Show spelling input (Point 3)
+    setInputWord('');
+    setShowSpellingInputOnly(true);
 
-    // Automatically focus the spelling input
     setTimeout(() => {
       document.getElementById('spelling-input')?.focus();
-    }, 100); // Small delay to ensure render
-  }, [selectedSpellerId]); // Depend on selectedSpellerId
+    }, 100);
+  }, [selectedSpellerId]);
 
-  // Handler for when the timer ends
   const handleTimerEnd = useCallback(() => {
     setTimerIsRunning(false);
     toast.error(`${currentCompetitor?.name || 'Current speller'}'s time is up!`);
-    // Optionally, automatically mark as incorrect or move to next competitor
-    // For now, we'll just stop the timer and let the organizer decide.
   }, [currentCompetitor?.name]);
 
   const handleLoad = async () => {
@@ -105,11 +97,13 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
     setCorrectWord('');
     setTypedWord('');
     setCurrentRound(1);
-    setCompetitors([]); // Clear competitors on new load
-    setFinalWinner(null); // Clear winner on new load
-    setSelectedSpellerId(null); // Reset selected speller
-    setTimerIsRunning(false); // Ensure timer is stopped
-    setShowSpellingInputOnly(false); // Hide spelling input on load
+    setCompetitors([]);
+    setFinalWinner(null);
+    setSelectedSpellerId(null);
+    setTimerIsRunning(false);
+    setShowSpellingInputOnly(false);
+    setRoundCompetitorStates(new Map());
+    setIsReviewingPastRound(false); // Reset on new load
 
     if (!passkey.trim()) {
       toast.error("Please enter a passkey.");
@@ -147,7 +141,6 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
       roundsSnapshots.forEach(roundDoc => {
         const roundNumber = roundDoc.id;
         const roundWordsData = roundDoc.data();
-        // FIX: Corrected syntax for object property assignment
         roundsOrganized[`Round ${roundNumber}`] = roundWordsData.words || [];
       });
 
@@ -162,7 +155,7 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
       setIsFlying(true);
       setTimeout(() => {
         setIsFlying(false);
-        setShowCompetitorRegistration(true); // Transition to registration
+        setShowCompetitorRegistration(true);
         setIsLoading(false);
       }, 3000);
 
@@ -173,54 +166,59 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
     }
   };
 
-  // Handler for registering competitors from CompetitorRegistrationForm
   const handleRegisterCompetitors = (registeredCompetitors: Competitor[]) => {
     setCompetitors(registeredCompetitors);
+    setRoundCompetitorStates(prev => new Map(prev).set(1, JSON.parse(JSON.stringify(registeredCompetitors))));
   };
 
-  // Handler for starting the main competition flow after registration
   const handleStartCompetitionUI = () => {
     setShowCompetitorRegistration(false);
-    setShowCompetitionUI(true); // Directly show the spelling UI for Round 1
-    setCurrentRound(1); // Ensure it's Round 1
-    // No automatic timer start here, waiting for organizer to click a competitor or "Start Turn"
+    setShowCompetitionUI(true);
+    setCurrentRound(1);
   };
 
-  // Handler for confirming winners for the current round
   const handleConfirmRoundWinners = (winners: Competitor[]) => {
-    // Update the main competitors state: mark non-winners as eliminated
-    setCompetitors(prevCompetitors =>
-      prevCompetitors.map(comp => ({
-        ...comp,
-        isEliminated: !winners.some(winner => winner.id === comp.id), // If not in winners list, they are eliminated
-        isCurrentTurn: false // Reset current turn status
-      }))
-    );
+    const updatedCompetitors = competitors.map(comp => ({
+      ...comp,
+      isEliminated: !winners.some(winner => winner.id === comp.id),
+      isCurrentTurn: false
+    }));
 
-    const remainingCompetitors = winners.filter(comp => !comp.isEliminated);
+    // Save the state of competitors for the *current* round (after eliminations)
+    setRoundCompetitorStates(prev => new Map(prev).set(currentRound, JSON.parse(JSON.stringify(updatedCompetitors))));
+    setCompetitors(updatedCompetitors);
 
-    if (remainingCompetitors.length === 1) {
-      // If only one competitor remains, declare them the winner
+    const remainingCompetitors = updatedCompetitors.filter(comp => !comp.isEliminated);
+
+    // --- MODIFIED LOGIC HERE ---
+    if (isReviewingPastRound) { // If we were reviewing a past round
+        setIsReviewingPastRound(false); // Reset the flag
+        setShowRoundSelection(false); // Hide selection UI
+        setShowCompetitionUI(true); // Go back to the spelling UI for the *current* round (the one we just reviewed)
+        setSelectedSpellerId(null); // Reset selected speller for consistency
+        setTimerIsRunning(false); // Stop timer
+        setShowSpellingInputOnly(false); // Hide spelling input
+        toast(`Winners for Round ${currentRound} updated. Back to spelling.`); //
+    } else if (remainingCompetitors.length === 1) {
       setFinalWinner(remainingCompetitors[0]);
       setShowRoundSelection(false);
       setShowCompetitionUI(false);
-      if (winnerSoundRef.current) { // Added this block
-      winnerSoundRef.current.play();
-    }
+      if (winnerSoundRef.current) {
+        winnerSoundRef.current.play();
+      }
       toast.success(`${remainingCompetitors[0].name} wins the competition!`);
     } else {
-      // If more than one, advance to the next round's spelling phase
-      setCurrentRound(prevRound => prevRound + 1); // Increment round number
-      setShowRoundSelection(false); // Hide competitor selection
-      setShowCompetitionUI(true); // Show main spelling UI for the new round
-      setSelectedSpellerId(null); // Reset selected speller for the new round
-      setTimerIsRunning(false); // Ensure timer is stopped for the new round
-      setShowSpellingInputOnly(false); // Hide spelling input for new round start
-      toast.success(`Round ${currentRound + 1} will now begin! Please select a speller.`);
+      const nextRoundNumber = currentRound + 1;
+      setCurrentRound(nextRoundNumber);
+      setShowRoundSelection(false);
+      setShowCompetitionUI(true);
+      setSelectedSpellerId(null);
+      setTimerIsRunning(false);
+      setShowSpellingInputOnly(false);
+      toast.success(`Round ${nextRoundNumber} will now begin! Please select a speller.`);
     }
   };
 
-  // Close the result modal
   const closeResultModal = () => {
     setShowResultModal(false);
     setFeedback('');
@@ -229,7 +227,7 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
   };
 
   const handleCheck = () => {
-    setTimerIsRunning(false); // Stop the timer when check is clicked
+    setTimerIsRunning(false);
 
     if (!loadedData || !loadedData.rounds) {
       toast.error("Competition data not loaded.");
@@ -243,7 +241,7 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
     const roundKey = `Round ${currentRound}`;
     const roundWords = loadedData.rounds[roundKey] || [];
 
-    const index = parseInt(inputNumber) - 1; // Convert to 0-based index
+    const index = parseInt(inputNumber) - 1;
 
     if (isNaN(index) || index < 0 || index >= roundWords.length) {
       toast.error('Invalid word number for this round.');
@@ -272,11 +270,10 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
         wrongSoundRef.current.play();
       }
     }
-    // Clear inputs and hide spelling input after check (as requested)
     setInputNumber('');
     setInputWord('');
-    setShowSpellingInputOnly(false); // Hide spelling input after check
-    setShowResultModal(true); // Show the result in a modal
+    setShowSpellingInputOnly(false);
+    setShowResultModal(true);
   };
 
   const handleRefresh = () => {
@@ -285,78 +282,92 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
     setFeedback('');
     setCorrectWord('');
     setTypedWord('');
-    setTimerIsRunning(false); // Stop timer on refresh
-    setShowResultModal(false); // Hide modal on refresh
-    setShowSpellingInputOnly(false); // Hide spelling input on refresh
+    setTimerIsRunning(false);
+    setShowResultModal(false);
+    setShowSpellingInputOnly(false);
   };
 
-  // Function to move to the winner selection phase for the current round
   const endRoundSpellingPhase = () => {
-    setShowCompetitionUI(false); // Hide spelling UI
-    setShowRoundSelection(true); // Show winner selection UI
-    setSelectedSpellerId(null); // Clear selected speller
-    setTimerIsRunning(false); // Stop timer
-    setShowSpellingInputOnly(false); // Hide spelling input when ending round
+    setShowCompetitionUI(false);
+    setShowRoundSelection(true);
+    setSelectedSpellerId(null);
+    setTimerIsRunning(false);
+    setShowSpellingInputOnly(false);
+    setIsReviewingPastRound(false); // Ensure this is false when going to end-of-round selection
     toast('Spelling phase ended. Please select winners for this round.');
   };
 
-  // Modified previousRound to go to selection phase
+  // Modified previousRound to use roundCompetitorStates
   const previousRound = () => {
     if (!loadedData || !loadedData.rounds) return;
 
-    if (currentRound > 1) {
-      setCurrentRound(currentRound - 1);
-      setShowCompetitionUI(false); // Hide spelling UI
-      setShowRoundSelection(true); // Go back to selection for previous round
-      handleRefresh(); // Clear inputs and feedback
-      setSelectedSpellerId(null); // Reset selected speller
-      setTimerIsRunning(false); // Stop timer
-      setShowSpellingInputOnly(false); // Hide spelling input
+    const prevRoundNumber = currentRound - 1;
+    if (prevRoundNumber >= 1) {
+      const historicalCompetitors = roundCompetitorStates.get(prevRoundNumber);
+      if (historicalCompetitors) {
+        setCompetitors(JSON.parse(JSON.stringify(historicalCompetitors)));
+        setCurrentRound(prevRoundNumber);
+        setShowCompetitionUI(false);
+        setShowRoundSelection(true); // Still go to selection for previous round
+        handleRefresh();
+        setSelectedSpellerId(null);
+        setTimerIsRunning(false);
+        setShowSpellingInputOnly(false);
+        setIsReviewingPastRound(true); // Set flag when navigating back to review
+        toast(`Moved back to Round ${prevRoundNumber}. Please review winners.`); //
+      } else {
+        toast.error(`No historical data found for Round ${prevRoundNumber}.`);
+      }
     } else {
       toast('Already at the first round!');
     }
   };
 
-  // Modified nextRound to go to selection phase
   const nextRound = () => {
     if (!loadedData || !loadedData.rounds) return;
 
     const maxRound = Math.max(...Object.keys(loadedData.rounds).map(key => parseInt(key.replace('Round ', ''))));
 
-    // If currently in spelling UI, clicking next round should take to winner selection for current round
     if (showCompetitionUI) {
       endRoundSpellingPhase();
       return;
     }
 
-    if (currentRound < maxRound) {
-      setCurrentRound(currentRound + 1);
-      setShowCompetitionUI(false); // Hide current UI
-      setShowRoundSelection(true); // Go to selection for next round
-      handleRefresh(); // Clear inputs and feedback
-      setSelectedSpellerId(null); // Reset selected speller
-      setTimerIsRunning(false); // Stop timer
-      setShowSpellingInputOnly(false); // Hide spelling input
+    const nextRoundNumber = currentRound + 1;
+    if (nextRoundNumber <= maxRound) {
+      const historicalCompetitors = roundCompetitorStates.get(nextRoundNumber);
+      if (historicalCompetitors) {
+        setCompetitors(JSON.parse(JSON.stringify(historicalCompetitors)));
+        setCurrentRound(nextRoundNumber);
+        setShowCompetitionUI(false);
+        setShowRoundSelection(true);
+        handleRefresh();
+        setSelectedSpellerId(null);
+        setTimerIsRunning(false);
+        setShowSpellingInputOnly(false);
+        setIsReviewingPastRound(false); // Ensure false when going forward
+        toast(`Moved to Round ${nextRoundNumber}.`);
+      } else {
+        toast.error(`No historical data found for Round ${nextRoundNumber}. Please confirm winners for the current round first.`);
+      }
     } else {
-      // If all rounds are done, and we're trying to go next,
-      // it means we should be in the final winner selection phase (if not already declared)
       const nonEliminated = competitors.filter(comp => !comp.isEliminated);
       if (nonEliminated.length === 1) {
         setFinalWinner(nonEliminated[0]);
         setShowCompetitionUI(false);
         setShowRoundSelection(false);
-        if (winnerSoundRef.current) { // Added this block
-        winnerSoundRef.current.play();
-      }
+        if (winnerSoundRef.current) {
+          winnerSoundRef.current.play();
+        }
       } else {
         toast('All predefined rounds completed! Please confirm final winners to declare a champion.');
         setShowCompetitionUI(false);
-        setShowRoundSelection(true); // Force to selection to pick final winners
+        setShowRoundSelection(true);
+        setIsReviewingPastRound(false); //
       }
     }
   };
 
-  // Effect to handle window resizing for confetti
   const detectSize = useCallback(() => {
     setWindowDimension({
       width: window.innerWidth,
@@ -370,7 +381,6 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
       wrongSoundRef.current = new Audio('/sounds/wrong.mp3');
       winnerSoundRef.current = new Audio('/sounds/winner.mp3');
 
-      // Add event listener for window resize
       window.addEventListener('resize', detectSize);
     }
     setMounted(true);
@@ -391,13 +401,12 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
       );
     }
 
-    // Cleanup function for the resize event listener
     return () => {
       if (typeof window !== 'undefined') {
         window.removeEventListener('resize', detectSize);
       }
     };
-  }, [detectSize]); // Add detectSize to dependency array
+  }, [detectSize]);
 
 
   return (
@@ -412,31 +421,29 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
         <BeeFlyer onFinish={() => {}} />
       )}
 
-      {/* Confetti will render only when finalWinner is true and isFlying is false */}
       {finalWinner && !isFlying && (
         <Confetti
           width={windowDimension.width}
           height={windowDimension.height}
-          recycle={true} // Makes the confetti continuous
-          numberOfPieces={500} // Adjust for more/less confetti
-          gravity={0.1} // Adjust how fast it falls
-          initialVelocityX={{ min: -5, max: 5 }} // Horizontal spread
-          initialVelocityY={{ min: 5, max: 15 }} // Vertical spread
-          className="absolute inset-0 z-0" // Ensure it covers the whole screen and is behind content
+          recycle={true}
+          numberOfPieces={500}
+          gravity={0.1}
+          initialVelocityX={{ min: -5, max: 5 }}
+          initialVelocityY={{ min: 5, max: 15 }}
+          className="absolute inset-0 z-0"
         />
       )}
 
       <div className={`p-6 transition-opacity duration-1000 ease-in-out
         ${mounted ? 'opacity-100' : 'opacity-0'} flex-grow flex items-center justify-center`}>
 
-        {/* Passkey Input UI */}
         {showPasskeyInput && !isFlying && (
           <div className='max-w-xl mx-auto w-full'>
             <h1 className="text-2xl font-bold mb-4 text-green-800 text-center">
               Please enter your passkey:
             </h1>
             <input
-              type="text"
+              type="password"
               placeholder="Enter passkey"
               value={passkey}
               onChange={(e) => setPasskey(e.target.value)}
@@ -482,7 +489,6 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
           </div>
         )}
 
-        {/* Competitor Registration UI */}
         {showCompetitorRegistration && !isFlying && loadedData && (
           <CompetitorRegistrationForm
             onRegisterCompetitors={handleRegisterCompetitors}
@@ -490,31 +496,27 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
           />
         )}
 
-        {/* Round Selection / Winner Confirmation UI (appears AFTER a spelling round) */}
         {showRoundSelection && !isFlying && loadedData && !finalWinner && (
           <CompetitorRoundDisplay
             currentRound={currentRound}
-            activeCompetitors={activeCompetitorsInRound}
+            activeCompetitors={competitors}
             onConfirmWinners={handleConfirmRoundWinners}
             isSpellingPhase={false}
           />
         )}
 
-        {/* Main Competition UI (Spelling Phase) */}
         {showCompetitionUI && !isFlying && loadedData && !finalWinner && (
           <div className={`transition-opacity duration-1000 ease-in-out w-full h-full flex flex-col items-center justify-center p-4
             ${showCompetitionUI ? 'opacity-100' : 'opacity-0'}`}>
             <h2 className="text-5xl md:text-6xl font-sans font-bold mb-4 text-black text-center">
               {loadedData.competitionName}
             </h2>
-            <div className='w-full max-w-7xl flex flex-col items-center space-y-4'> {/* Increased max-w-5xl */}
+            <div className='w-full max-w-7xl flex flex-col items-center space-y-4'>
               <p className="text-3xl font-bold text-blue-900">Round {currentRound}</p>
 
-              {/* Display current competitors (from activeCompetitorsInRound) */}
               <div className="w-full flex flex-col lg:flex-row items-center justify-center gap-4">
                 <button
                   onClick={previousRound}
-                  // Adjusted color to match Next Round button
                   className="bg-blue-300 text-blue-900 hover:bg-yellow-200 px-4 py-2 rounded-md shadow-md
                     hover:scale-105 transition-transform hover:cursor-pointer hover:text-blue-400
                     active:scale-95 font-semibold text-base lg:order-1 w-full lg:w-auto"
@@ -523,11 +525,9 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
                 </button>
                 <div className="flex-grow w-full p-4 border rounded-md bg-blue-50 border-blue-200 shadow-md lg:order-2 relative overflow-hidden">
                   <h3 className="text-xl font-semibold mb-2 text-blue-800 text-center">Contestants in Round {currentRound}:</h3>
-                  {/* Updated: flex-nowrap to prevent wrapping, overflow-x-auto to show scrollbar */}
                   <div
-                    ref={competitorsScrollRef} // Ref to control scrolling
-                    className="flex flex-nowrap gap-4 justify-start overflow-x-auto scroll-smooth py-2" // Removed scrollbar hiding styles
-                    // Removed: style={{ scrollbarWidth: 'none', '-ms-overflow-style': 'none' }}
+                    ref={competitorsScrollRef}
+                    className="flex flex-nowrap gap-4 justify-start overflow-x-auto scroll-smooth py-2"
                   >
                     {activeCompetitorsInRound.map(comp => (
                         <button
@@ -537,7 +537,7 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
                               ...c,
                               isCurrentTurn: c.id === comp.id
                             })));
-                            setSelectedSpellerId(comp.id); // Set the selected speller ID
+                            setSelectedSpellerId(comp.id);
                           }}
                           className={`px-4 py-2 rounded-full text-base font-medium flex-shrink-0 transition-all duration-300 cursor-pointer
                             ${comp.isCurrentTurn ? 'bg-yellow-200 text-blue-900 ring-2 ring-yellow-600 font-semibold' : 'bg-blue-200 text-blue-900 hover:bg-blue-300'}`}
@@ -559,7 +559,6 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
 
 
               <div className="w-full flex flex-col md:flex-row items-center md:items-start justify-center gap-6 p-4 bg-gray-50 rounded-xl shadow-lg border border-gray-200">
-                {/* Current Competitor's Turn */}
                 {currentCompetitor && (
                   <div className="w-full md:w-[65%] text-center p-4 bg-blue-100/30 rounded-xl shadow-inner border border-indigo-200">
                     <p className="text-lg text-blue-800 font-semibold">Current Speller:</p>
@@ -570,7 +569,6 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
                 )}
 
                 <div className="w-full md:w-[35%] flex flex-col sm:flex-row md:flex-row items-center justify-center gap-4 p-4 bg-gray-100 rounded-xl shadow-md border border-gray-200">
-                  {/* Styled container */}
                   <label
                     htmlFor="timer-duration"
                     className="text-gray-700 font-medium whitespace-nowrap"
@@ -594,9 +592,7 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
                 </div>
               </div>
 
-              {/* Word Number, Spelling Input, and Start Turn Button */}
               <div className="w-full flex flex-col md:flex-row items-center justify-center gap-4">
-                {/* Point 3: Word number input always visible */}
                 <input
                   type="number"
                   placeholder="Word Number"
@@ -609,14 +605,13 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
                       }
                   }}
                 />
-                {/* Point 3: Spelling input conditionally hidden */}
                 <input
-                  id="spelling-input" // Added ID for focusing
+                  id="spelling-input"
                   type="text"
                   placeholder="Enter spelling"
                   value={inputWord}
                   onChange={(e) => setInputWord(e.target.value)}
-                  className={`p-3 border border-green-500 rounded-md flex-grow md:w-1/3 bg-white text-black placeholder-gray-400 text-lg focus:outline-none focus:ring-2 focus:ring-green-600 ${showSpellingInputOnly ? '' : 'hidden'}`}
+                  className={`p-3 border border-green-500 rounded-md flex-grow md:w-1/3 bg-white text-black placeholder-gray-400 text-xl focus:outline-none focus:ring-2 focus:ring-green-600 ${showSpellingInputOnly ? '' : 'hidden'}`}
                   onKeyPress={(e) => {
                       if (e.key === 'Enter' && inputNumber && inputWord) {
                           handleCheck();
@@ -624,8 +619,8 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
                   }}
                 />
                 <button
-                  onClick={startSpellingTurn} // Button to start timer and focus input (Point 3)
-                  disabled={!selectedSpellerId || timerIsRunning} // Disable if no speller is selected or timer is already running
+                  onClick={startSpellingTurn}
+                  disabled={!selectedSpellerId || timerIsRunning}
                   className={`bg-purple-600 text-white px-5 py-2 rounded-md shadow-md
                   hover:bg-purple-700 hover:scale-105 transition-transform
                   cursor-pointer active:scale-95 font-semibold text-base w-full md:w-auto`}
@@ -634,11 +629,10 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
                 </button>
               </div>
 
-              {/* Control Buttons */}
               <div className="flex flex-wrap justify-center gap-3 w-full mt-4">
                 <button
                   onClick={handleCheck}
-                  disabled={!showSpellingInputOnly} // Disable if spelling input is hidden
+                  disabled={!showSpellingInputOnly}
                   className={`bg-green-600 text-white px-5 py-2 rounded-md shadow-md
                   hover:bg-green-700 hover:scale-105 transition-transform
                   cursor-pointer active:scale-95 font-semibold text-base ${showSpellingInputOnly ? '' : 'opacity-50 cursor-not-allowed'}`}
@@ -654,7 +648,7 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
                   Clear Inputs
                 </button>
                 <button
-                  onClick={endRoundSpellingPhase} // New button to explicitly end spelling phase and go to winner selection
+                  onClick={endRoundSpellingPhase}
                   className="bg-red-500 text-white px-5 py-2 rounded-md shadow-md
                   hover:bg-red-600 hover:scale-105 transition-transform
                   active:scale-95 cursor-pointer font-semibold text-base"
@@ -664,10 +658,9 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
               </div>
             </div>
 
-            {/* Result Modal */}
             {showResultModal && typedWord && correctWord && (
-              <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50"> {/* Point 2: Changed opacity */}
-                <div className="bg-white p-6 rounded-lg shadow-2xl text-center w-full max-w-md border border-gray-300 relative">
+              <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
+                <div className="bg-white p-6 rounded-lg shadow-2xl text-center w-full max-w-4xl border border-gray-300 relative">
                   <button
                     onClick={closeResultModal}
                     className="absolute top-3 right-3 text-gray-500 hover:text-gray-700 text-2xl font-bold"
@@ -700,9 +693,8 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
           </div>
         )}
 
-        {/* Final Winner Display UI */}
         {finalWinner && !isFlying && (
-          <div className="bg-white rounded-lg shadow-xl p-8 text-center border border-yellow-300 inline-block mx-auto max-w-full z-10 relative"> {/* Added inline-block, mx-auto, max-w-full, z-10, relative */}
+          <div className="bg-white rounded-lg shadow-xl p-8 text-center border border-yellow-300 inline-block mx-auto max-w-full z-10 relative">
             <h2 className="text-4xl font-bold mb-4 text-yellow-600">🎉 Competition Winner! 🎉</h2>
             <p className="text-6xl font-extrabold text-green-700 uppercase mb-6 drop-shadow-lg">
               {finalWinner.name}
@@ -710,7 +702,6 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
             <p className="text-xl text-gray-700">Congratulations on winning the Spelling Bee!</p>
             <button
               onClick={() => {
-                // Reset everything to start a new competition
                 setPasskey('');
                 setLoadedData(null);
                 setCurrentRound(1);
@@ -725,19 +716,19 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
                 setShowRoundSelection(false);
                 setShowCompetitionUI(false);
                 setFinalWinner(null);
-                setTimerDuration(30); // Reset timer duration
-                setTimerIsRunning(false); // Ensure timer is stopped
-                setSelectedSpellerId(null); // Reset selected speller
-                setShowResultModal(false); // Hide modal
-                setShowSpellingInputOnly(false); // Hide spelling input
+                setTimerDuration(30);
+                setTimerIsRunning(false);
+                setSelectedSpellerId(null);
+                setShowResultModal(false);
 
                 if (winnerSoundRef.current) {
-  winnerSoundRef.current.pause(); // Pause the audio
-  winnerSoundRef.current.currentTime = 0; // Rewind to the beginning
-}
+                  winnerSoundRef.current.pause();
+                  winnerSoundRef.current.currentTime = 0;
+                }
+                setRoundCompetitorStates(new Map());
+                setIsReviewingPastRound(false); // Reset on new competition
               }}
-              className="mt-8 bg-purple-600 text-white px-6 py-3 rounded-md shadow-lg font-bold text-lg hover:bg-purple-700 
-              transition-transform transform hover:scale-105 active:scale-95 hover:cursor-pointer"
+              className="mt-8 bg-purple-600 text-white px-6 py-3 rounded-md shadow-lg font-bold text-lg hover:bg-purple-700 transition-transform transform hover:scale-105 active:scale-95 cursor-pointer"
             >
               Start New Competition
             </button>
@@ -745,7 +736,6 @@ const winnerSoundRef = useRef<HTMLAudioElement | null>(null);
         )}
       </div>
 
-      {/* Footer */}
       <Footer />
     </div>
   );
